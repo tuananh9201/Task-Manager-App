@@ -46,8 +46,7 @@ const TaskList = () => {
     const ws = new WebSocket('ws://localhost:8080/ws');
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      console.log("**** data ", data);
-      
+
       if (data.Type === 'create' && data.Task.board_id === parseInt(boardId)) {
         setTasks((prev) => [...prev, data.Task]);
       } else if (data.Type === 'update' && data.Task.board_id === parseInt(boardId)) {
@@ -57,8 +56,7 @@ const TaskList = () => {
           )
         );
       } else if (data.Type === 'delete') {
-        console.log('delete task', data.Task.id);
-        
+
         setTasks((prev) =>
           prev.filter((task) => task.id !== data.Task.id)
         );
@@ -71,8 +69,7 @@ const TaskList = () => {
   }, [boardId]);
 
   const onEditTask = (task) => {
-    console.log("onEdit task:", task);
-    
+
     setEditTaskId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description);
@@ -96,7 +93,7 @@ const TaskList = () => {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">Tasks</h2>
-        <button 
+        <button
           onClick={() => setIsModalOpen(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
@@ -125,10 +122,10 @@ const TaskList = () => {
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         taskId={editTaskId}
-        task={{ 
-          title: editTitle, 
-          description: editDescription, 
-          due_date: editDueDate 
+        task={{
+          title: editTitle,
+          description: editDescription,
+          due_date: editDueDate
         }}
         boardId={boardId}
         onError={setError}
