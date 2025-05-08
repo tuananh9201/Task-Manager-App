@@ -41,7 +41,7 @@ func (h *BoardHandler) CreateBoard(c *gin.Context) {
 
 	userID := c.GetInt("user_id")
 	fmt.Println("userID : ", userID)
-	board.CreatedBy = userID
+	board.OwnerID = userID
 
 	tx, err := h.DB.Beginx()
 	if err != nil {
@@ -52,8 +52,8 @@ func (h *BoardHandler) CreateBoard(c *gin.Context) {
 	// Insert the board
 	var boardID int
 	err = tx.QueryRow(
-		"INSERT INTO boards (name, description, created_by) VALUES ($1, $2, $3) RETURNING id",
-		board.Name, board.Description, board.CreatedBy,
+		"INSERT INTO boards (name, owner_id) VALUES ($1, $2, $3) RETURNING id",
+		board.Name, board.OwnerID,
 	).Scan(&boardID)
 
 	if err != nil {
@@ -72,6 +72,20 @@ func (h *BoardHandler) CreateBoard(c *gin.Context) {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add board member"})
 		return
+	}
+
+	// Create default lists
+	defaultLists := []string{"Backlog", "Doing", "To Do", "Done"}
+	for i, listName := range defaultLists {
+		_, err = tx.Exec(
+			"INSERT INTO columns (board_id, name, \"order\") VALUES ($1, $2, $3)",
+			boardID, listName, i,
+		)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create default lists"})
+			return
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -174,65 +188,4 @@ func (h *BoardHandler) GetBoards(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
-}
-
-func (h *BoardHandler) AcceptInvitation(c *gin.Context) {
-	type AcceptRequest struct {
-		Token string `json:"token"`
-	}
-
-	var req AcceptRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	userID := c.GetInt("user_id")
-
-	// Start transaction
-	tx, err := h.DB.Beginx()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
-		return
-	}
-
-	// Get and validate invitation
-	var invitation models.BoardInvitation
-	err = tx.Get(&invitation,
-		"SELECT * FROM board_invitations WHERE token = $1 AND expires_at > NOW()",
-		req.Token,
-	)
-
-	if err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired invitation"})
-		return
-	}
-
-	// Add user as board member
-	_, err = tx.Exec(
-		"INSERT INTO board_members (board_id, user_id, role) VALUES ($1, $2, $3)",
-		invitation.BoardID, userID, "member",
-	)
-
-	if err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add board member"})
-		return
-	}
-
-	// Delete the invitation
-	_, err = tx.Exec("DELETE FROM board_invitations WHERE token = $1", req.Token)
-	if err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete invitation"})
-		return
-	}
-
-	if err := tx.Commit(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Successfully joined board"})
 }

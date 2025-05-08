@@ -117,7 +117,7 @@ func (app *App) broadcastTasks() {
 func jwtMiddleware(app *App) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := c.GetHeader("Authorization")
-		if "Bearer " == tokenString[:7] {
+		if tokenString[:7] == "Bearer " {
 			tokenString = tokenString[7:]
 		}
 		if tokenString == "" {
@@ -168,9 +168,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// if err := runMigrations(db); err != nil {
-	// 	log.Fatal("Failed to run migrations:", err)
-	// }
+	if err := runMigrations(db); err != nil {
+		log.Fatal("Failed to run migrations:", err)
+	}
 
 	app := &App{
 		DB:        db,
@@ -199,7 +199,6 @@ func main() {
 	protected.POST("/boards", boardHandler.CreateBoard)
 	protected.GET("/boards", boardHandler.GetBoards)
 	protected.POST("/boards/invite", boardHandler.InviteToBoard)
-	protected.POST("/boards/accept-invite", boardHandler.AcceptInvitation)
 
 	r.GET("/ws", app.handleWebSocket)
 

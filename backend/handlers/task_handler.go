@@ -22,10 +22,10 @@ type TaskEvent struct {
 }
 
 type PaginatedTasksResponse struct {
-	Tasks       []models.Task `json:"tasks"`
-	CurrentPage int           `json:"current_page"`
-	TotalPages  int           `json:"total_pages"`
-	TotalItems  int           `json:"total_items"`
+	Tasks       []models.TaskWithList `json:"tasks"`
+	CurrentPage int                   `json:"current_page"`
+	TotalPages  int                   `json:"total_pages"`
+	TotalItems  int                   `json:"total_items"`
 }
 
 func (h *TaskHandler) GetTasks(c *gin.Context) {
@@ -45,41 +45,47 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 
 	offset := (pageNum - 1) * limitNum
 	userID := c.GetInt("user_id")
-	fmt.Printf("user_id: %d\n", userID)
-	fmt.Printf("board_id: %s\n", boardID)
 	// Get total count of tasks
 	var totalItems int
-	query := "SELECT COUNT(*) FROM tasks WHERE user_id = $1"
+	query := "SELECT COUNT(*) FROM tasks WHERE user_id = $1 AND board_id = $2"
 	args := []interface{}{userID}
+	var boardIDNum int
 	if boardID != "" {
-		query += " AND board_id = $2"
-		var boardIDNum int
 		boardIDNum, err = strconv.Atoi(boardID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board_id"})
 			return
 		}
 		args = append(args, boardIDNum)
+		// Removed redundant parameter addition
 	}
 
 	err = h.DB.Get(&totalItems, query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get tasks count"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get tasks count " + err.Error()})
 		return
 	}
 
 	totalPages := (totalItems + limitNum - 1) / limitNum
 
-	// Get paginated tasks
-	var tasks []models.Task
-	query = "SELECT * FROM tasks WHERE user_id = $1"
-	args = []interface{}{userID}
+	// Get paginated tasks with list information
+	var tasks []models.TaskWithList
+	query = `
+		SELECT tasks.*, lists.name AS list_name
+		FROM tasks
+		LEFT JOIN lists ON tasks.list_id = lists.id
+		WHERE tasks.user_id = $1 AND tasks.board_id = $2
+	`
+	args = []interface{}{userID, boardIDNum}
 	if boardID != "" {
-		query += " AND board_id = $2"
-		boardIDNum, _ := strconv.Atoi(boardID)
-		args = append(args, boardIDNum)
+		boardIDNum, err = strconv.Atoi(boardID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board_id"})
+			return
+		}
+		// Removed redundant parameter addition
 	}
-	query += " ORDER BY id LIMIT $" + strconv.Itoa(len(args)+1) + " OFFSET $" + strconv.Itoa(len(args)+2)
+	query += " ORDER BY tasks.id LIMIT $" + strconv.Itoa(len(args)+1) + " OFFSET $" + strconv.Itoa(len(args)+2)
 	args = append(args, limitNum, offset)
 
 	err = h.DB.Select(&tasks, query, args...)
@@ -88,7 +94,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		return
 	}
 	if tasks == nil {
-		tasks = []models.Task{}
+		tasks = []models.TaskWithList{}
 	}
 	response := PaginatedTasksResponse{
 		Tasks:       tasks,

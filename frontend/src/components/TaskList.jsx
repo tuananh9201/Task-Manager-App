@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { AnimatePresence } from 'framer-motion';
 import TaskItem from './TaskItem';
 import ModalCreateTask from './ModalCreateTask';
@@ -89,6 +90,24 @@ const TaskList = () => {
     }
   };
 
+  const onDragEnd = (result) => {
+    if (!result.destination) {
+      return;
+    }
+
+    const { source, destination } = result;
+
+    if (source.droppableId !== destination.droppableId) {
+      const sourceListId = source.droppableId;
+      const destListId = destination.droppableId;
+      const sourceIndex = source.index;
+      const destIndex = destination.index;
+
+      // Implement reordering logic here
+      console.log(`Moved task from list ${sourceListId} at index ${sourceIndex} to list ${destListId} at index ${destIndex}`);
+    }
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-4">
@@ -104,13 +123,52 @@ const TaskList = () => {
       {tasks.length === 0 ? (
         <p className="text-gray-500">No tasks found.</p>
       ) : (
-        <div className="space-y-3">
-          <AnimatePresence>
-            {tasks.map((task) => (
-              <TaskItem key={task.id} task={task} onStatusUpdate={updateTaskStatus} onEditTask={onEditTask} onDeleteTask={onDeleteTask} />
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(
+              tasks.reduce((acc, task) => {
+                if (!acc[task.list_id]) {
+                  acc[task.list_id] = {
+                    list: task.list_name,
+                    tasks: []
+                  };
+                }
+                acc[task.list_id].tasks.push(task);
+                return acc;
+              }, {})
+            ).map(([listId, { list, tasks }]) => (
+              <Droppable droppableId={listId} key={listId}>
+                {(provided) => (
+                  <div
+                    {...provided.droppableProps}
+                    ref={provided.innerRef}
+                    className="bg-white p-4 rounded-lg shadow-sm border border-gray-200"
+                  >
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3">{list}</h3>
+                    <div className="space-y-3">
+                      <AnimatePresence>
+                        {tasks.map((task, index) => (
+                          <Draggable key={task.id} draggableId={String(task.id)} index={index}>
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                              >
+                                <TaskItem key={task.id} task={task} onStatusUpdate={updateTaskStatus} onEditTask={onEditTask} onDeleteTask={onDeleteTask} />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                      </AnimatePresence>
+                      {provided.placeholder}
+                    </div>
+                  </div>
+                )}
+              </Droppable>
             ))}
-          </AnimatePresence>
-        </div>
+          </div>
+        </DragDropContext>
       )}
       <ModalCreateTask
         isOpen={isModalOpen}
