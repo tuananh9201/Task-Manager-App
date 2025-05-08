@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import ModalCreateBoard from './ModalCreateBoard';
 
 const BoardList = () => {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ const BoardList = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchBoards = async (page) => {
     setLoading(true);
@@ -75,7 +77,7 @@ const BoardList = () => {
         <h1 className="text-2xl font-semibold text-gray-800">My Boards</h1>
         <button 
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          // onClick={() => { /* Implement create board functionality later */ }}
+          onClick={() => setIsModalOpen(true)}
         >
           <Plus className="h-5 w-5 mr-2" />
           Create New Board
@@ -133,6 +135,11 @@ const BoardList = () => {
       <div className="mt-2 text-center text-sm text-gray-500">
         Total Boards: {totalItems}
       </div>
+      <ModalCreateBoard
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onError={setError}
+      />
     </div>
   );
 };

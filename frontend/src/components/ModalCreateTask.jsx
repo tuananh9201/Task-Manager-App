@@ -22,7 +22,7 @@ const ModalCreateTask = ({ isOpen, onClose, boardId, onError }) => {
       setNewTask({
         title: '',
         description: '',
-        due_date: '',
+        due_date: new Date().toISOString().split('T')[0],
         status: 'pending'
       });
       onClose();
