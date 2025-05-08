@@ -23,22 +23,13 @@ type User struct {
 	Password string `db:"password" json:"-"`
 }
 
-type Task struct {
-	ID          int    `db:"id" json:"id"`
-	BoardID     int    `db:"board_id" json:"board_id"`
-	Title       string `db:"title" json:"title"`
-	Description string `db:"description" json:"description"`
-	Status      string `db:"status" json:"status"`
-	DueDate     string `db:"due_date" json:"due_date"`
-}
-
 // Board struct moved to models/board.go
 
 type App struct {
 	DB        *sqlx.DB
 	Clients   map[*websocket.Conn]bool
 	ClientsMu sync.Mutex
-	Broadcast chan Task
+	Broadcast chan handlers.TaskEvent
 	JWTSecret string
 }
 
@@ -79,26 +70,6 @@ func (app *App) login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenString})
 }
 
-func (app *App) createTask(c *gin.Context) {
-	var task Task
-	if err := c.ShouldBindJSON(&task); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	userID := c.GetInt("user_id")
-	_, err := app.DB.Exec(
-		"INSERT INTO tasks (board_id, title, description, status, due_date, user_id) VALUES ($1, $2, $3, $4, $5, $6)",
-		task.BoardID, task.Title, task.Description, task.Status, task.DueDate, userID,
-	)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
-		return
-	}
-	app.DB.Get(&task, "SELECT * FROM tasks WHERE title=$1 AND user_id=$2", task.Title, userID)
-	app.Broadcast <- task
-	c.JSON(http.StatusOK, task)
-}
-
 func (app *App) handleWebSocket(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -119,7 +90,9 @@ func (app *App) handleWebSocket(c *gin.Context) {
 	for {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
-			log.Println("WebSocket read error:", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("WebSocket error: %v", err)
+			}
 			break
 		}
 	}
@@ -171,7 +144,7 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -202,7 +175,7 @@ func main() {
 	app := &App{
 		DB:        db,
 		Clients:   make(map[*websocket.Conn]bool),
-		Broadcast: make(chan Task),
+		Broadcast: make(chan handlers.TaskEvent),
 		JWTSecret: "your-secret-key",
 	}
 
@@ -213,7 +186,14 @@ func main() {
 	r.POST("/register", app.register)
 	r.POST("/login", app.login)
 	protected := r.Group("/api", jwtMiddleware(app))
-	protected.POST("/tasks", app.createTask)
+	taskHandler := &handlers.TaskHandler{
+		DB:        db,
+		Broadcast: app.Broadcast,
+	}
+	protected.POST("/tasks", taskHandler.CreateTask)
+	protected.GET("/tasks", taskHandler.GetTasks)
+	protected.PATCH("/tasks/:id", taskHandler.UpdateTask)
+	protected.DELETE("/tasks/:id", taskHandler.DeleteTask)
 
 	// Board routes
 	protected.POST("/boards", boardHandler.CreateBoard)
